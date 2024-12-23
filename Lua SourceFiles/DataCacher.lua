@@ -164,7 +164,7 @@ local Players = game:GetService("Players")
 local DataCacher = {}
 DataCacher.__index = DataCacher
 
---------------------------------------
+---------------------------------------
 
 --// The total time, in seconds, for a session to be expired for other entries to use the session
 local SESSION_LOCK_TIMEOUT: number = 30 * 60
@@ -183,9 +183,18 @@ local DECIMAL_PLACES: number = 3
 local FILTERED_RESULT: string = "###?"
 
 --// Uses this datastore name to check if datastores are enabled (in Studio)
-local BURNER_DATASTORE_NAME = "____DS"
+local BURNER_DATASTORE_NAME: string = "____DS"
 
---------------------------------------
+--// The time, in seconds, that Load() has to wait if the player rejoined too quickly
+local THRESHOLD_FOR_REQUEST_CALLS: number = 10 
+
+---------------------------------------
+----------- DEBUGGING TOOLS -----------
+
+local ALLOW_GETASYNC_CALLS = true
+local ALLOW_UPDATEASYNC_CALLS = true
+
+---------------------------------------
 
 local TemplateOptions = {
 	--// The key used to save the player's data (%i is the player's userid)
@@ -473,6 +482,10 @@ local function waitForDatastoreEnabledResponse()
 	end
 end
 
+local function isPlayerInGame(player: Player)
+	return player and player:IsDescendantOf(Players)
+end
+
 function DataCacher.CreateDatastore(DatastoreKey: string, DatastoreOptions: DatastoreOptions?)
 	if Globals.RegisteredDataStores[DatastoreKey] then
 		return
@@ -529,6 +542,10 @@ function DataCacher.CreateDatastore(DatastoreKey: string, DatastoreOptions: Data
 
 			operations = {
 				write = {},
+				player_threshold = {
+					players = {},
+					queue = {},
+				},
 			},
 
 			datastore = nil,
@@ -627,11 +644,50 @@ function DataCacher.GetRegisteredDatastore(DatastoreKey: string, Timeout: number
 end
 
 function DataCacher:Load(player: Player, MigratedData: {}?): {}?
-	if self.__raw.player_data[player] then
+	if self.__raw.is_shutting_down then
 		return
 	end
 
-	if self.__raw.is_shutting_down then
+	if self.__raw.player_data[player] then
+		if table.find(self.__raw.operations.write, player.UserId) then
+			repeat task.wait()
+			until not table.find(self.__raw.operations.write, player.UserId)
+		else
+			return
+		end
+	end
+
+	do
+		local current_queue	
+		
+		local queue = self.__raw.operations.player_threshold.queue[player.UserId]
+		local clock = self.__raw.operations.player_threshold.players[player.UserId]
+		
+		self.__raw.operations.player_threshold.queue[player.UserId] = queue and queue + 1 or 1
+		current_queue = self.__raw.operations.player_threshold.queue[player.UserId]
+
+		local diff = clock and os.clock() - clock
+		if (queue and clock) and diff < THRESHOLD_FOR_REQUEST_CALLS then
+			local timeToWait = os.clock() + (THRESHOLD_FOR_REQUEST_CALLS - diff)
+
+			repeat task.wait()
+			until os.clock() >= timeToWait
+		end
+
+		if self.__raw.operations.player_threshold.queue[player.UserId] ~= current_queue then
+			return
+		end
+
+		self.__raw.operations.player_threshold.players[player.UserId] = os.clock()
+		task.delay(THRESHOLD_FOR_REQUEST_CALLS, function()
+			if self.__raw.operations.player_threshold.queue[player.UserId] == current_queue then
+				self.__raw.operations.player_threshold.queue[player.UserId] = nil
+				self.__raw.operations.player_threshold.players[player.UserId] = nil
+			end
+		end)
+	end
+
+	if not isPlayerInGame(player) then
 		return
 	end
 
@@ -642,7 +698,7 @@ function DataCacher:Load(player: Player, MigratedData: {}?): {}?
 		local success, result = pcall(function()
 			self.__raw.waitForThrottle("GET")
 			if isDatastoreEnabledForExperience() then
-				return self.__raw.datastore:GetAsync(key)
+				return ALLOW_GETASYNC_CALLS and self.__raw.datastore:GetAsync(key)
 			end
 		end)
 		return success, result
@@ -658,6 +714,10 @@ function DataCacher:Load(player: Player, MigratedData: {}?): {}?
 
 			task.wait(self.__raw.options.RetryCallDelay)
 		end
+	end
+
+	if not isPlayerInGame(player) then
+		return
 	end
 
 	if result and result.data then
@@ -768,7 +828,7 @@ function DataCacher:Save(player: Player, Callback: (data: {}, oldData: {}) -> {}
 					local previous_data = latest_data or {}
 					previous_data["Version"] = previous_data.Version or 1
 
-					if is_kicked or data.Version ~= previous_data.Version then
+					if is_kicked or data.Version ~= previous_data.Version or not ALLOW_UPDATEASYNC_CALLS then
 						return nil
 					end
 
