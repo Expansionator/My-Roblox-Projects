@@ -659,10 +659,10 @@ function DataCacher:Load(player: Player, MigratedData: {}?): {}?
 
 	do
 		local current_queue	
-		
+
 		local queue = self.__raw.operations.player_threshold.queue[player.UserId]
 		local clock = self.__raw.operations.player_threshold.players[player.UserId]
-		
+
 		self.__raw.operations.player_threshold.queue[player.UserId] = queue and queue + 1 or 1
 		current_queue = self.__raw.operations.player_threshold.queue[player.UserId]
 
@@ -888,6 +888,12 @@ end
 
 function DataCacher:Get(player: Player, ViewRawData: boolean?): {}
 	waitForDatastoreEnabledResponse()
+
+	if table.find(self.__raw.operations.write, player.UserId) then
+		repeat task.wait()
+		until not table.find(self.__raw.operations.write, player.UserId)
+	end
+
 	return self.__raw.player_data[player] and 
 		(ViewRawData and Globals.Duplicate(self.__raw.player_data[player]) or
 			self.__raw.player_data[player]["data"])
