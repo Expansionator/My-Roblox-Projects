@@ -154,6 +154,20 @@ function MouseHover:ListenToObject(object: GuiObject, callbacks: Callbacks)
 		end
 	end
 
+	local function clearObjectTable()
+		for _, meta in self.__pv.objects do
+			if meta.object == object then
+				meta.object = nil
+
+				if meta.connection then
+					meta.connection:Disconnect()
+					meta.connection = nil
+				end
+				break
+			end
+		end
+	end
+
 	table.insert(self.__pv.objects, {
 		object = object,
 
@@ -162,7 +176,7 @@ function MouseHover:ListenToObject(object: GuiObject, callbacks: Callbacks)
 
 		connection = object.Destroying:Once(function()
 			isHovering = false
-			self:Destroy()
+			clearObjectTable()
 		end)
 	})
 end
