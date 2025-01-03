@@ -647,14 +647,14 @@ function DataCacher:Load(player: Player, MigratedData: {}?): {}?
 	if self.__raw.is_shutting_down then
 		return
 	end
+	
+	if table.find(self.__raw.operations.write, player.UserId) then
+		repeat task.wait()
+		until not table.find(self.__raw.operations.write, player.UserId)
+	end
 
 	if self.__raw.player_data[player] then
-		if table.find(self.__raw.operations.write, player.UserId) then
-			repeat task.wait()
-			until not table.find(self.__raw.operations.write, player.UserId)
-		else
-			return
-		end
+		return
 	end
 
 	do
