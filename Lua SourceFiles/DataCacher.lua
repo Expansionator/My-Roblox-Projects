@@ -155,6 +155,14 @@ end
 
 ]]
 
+
+
+
+warn("A new version of DataCacher is now available! We recommend upgrading to the DataCacher V2 module for improved performance and features.")
+
+
+
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DatastoreService = game:GetService("DataStoreService")
 local TextService = game:GetService("TextService")
@@ -647,7 +655,7 @@ function DataCacher:Load(player: Player, MigratedData: {}?): {}?
 	if self.__raw.is_shutting_down then
 		return
 	end
-	
+
 	if table.find(self.__raw.operations.write, player.UserId) then
 		repeat task.wait()
 		until not table.find(self.__raw.operations.write, player.UserId)
