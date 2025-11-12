@@ -142,6 +142,10 @@ function Signal:Connect(Callback: () -> nil)
 
 	if typeof(Callback) == "function" then
 		local conn = Connection.new(Callback, function()
+			if self.Destroyed or not self.__data or not self.__data.functions then
+				return
+			end
+
 			self.__data.functions[index] = nil
 		end)
 
